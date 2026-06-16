@@ -37,7 +37,220 @@ function Dashboard(){ const [d,setD]=useState(null); useEffect(()=>{api.get('/da
 
 function Customers(){ const [q,setQ]=useState(''),[list,setList]=useState([]),[selected,setSelected]=useState(null),[toast,setToast]=useState(''),[form,setForm]=useState({name:'',mobile:'',address:''}); const load=()=>api.get('/customers?q='+encodeURIComponent(q)).then(r=>setList(r.data)); useEffect(()=>{load()},[]); async function saveCustomer(e){e.preventDefault(); try{await api.post('/customers',form); setForm({name:'',mobile:'',address:''}); setToast('Customer saved successfully'); load();}catch(err){setToast(err.message)}} async function open(c){ const r=await api.get('/customers/'+c.id); setSelected(r.data); } return <div className="two"><section className="panel leftPanel"><div className="toolbar"><div className="search"><Search size={17}/><input placeholder="Search name or phone" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==='Enter'&&load()}/></div><button onClick={load}>Search</button></div><form className="form compact" onSubmit={saveCustomer}><h3>➕ Add Customer</h3><Field icon={<UserRound size={14}/>} label="Customer Name" required value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><Field icon={<Phone size={14}/>} label="Mobile 10 digits" required value={form.mobile} onChange={e=>setForm({...form,mobile:e.target.value})}/><Field icon={<Home size={14}/>} label="Address" value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/><button className="primary full"><Plus size={16}/>Save Customer</button></form><div className="list">{list.map(c=><button className="customerCard" key={c.id} onClick={()=>open(c)}><div><b>{c.name}</b><span>{c.mobile}</span><small>{c.address||'No address'}</small></div><span className="openChip">Open</span></button>)}</div></section><section className="panel detailPanel">{selected?<CustomerProfile customer={selected} refresh={()=>open(selected)}/>:<Empty text="Search by mobile/name and open a customer. Then add shirt or pant measurement separately."/>}</section><Toast msg={toast}/></div>; }
 
-function CustomerProfile({customer,refresh}){ const [m,setM]=useState({dressType:'SHIRT'}),[order,setOrder]=useState({dressType:'SHIRT',quantity:1,amount:'',advance:'0',paymentMode:'CASH',deliveryDate:''}),[msg,setMsg]=useState(''),[edit,setEdit]=useState(false),[cf,setCf]=useState({name:customer.name,mobile:customer.mobile,address:customer.address||''}); useEffect(()=>{setCf({name:customer.name,mobile:customer.mobile,address:customer.address||''})},[customer.id]); const fields=MEASURE[m.dressType]||MEASURE.OTHER; const usableMeasurements=(customer.measurements||[]).filter(x=>x.dressType===order.dressType);
+//function CustomerProfile({customer,refresh}){ const [m,setM]=useState({dressType:'SHIRT'}),[order,setOrder]=useState({dressType:'SHIRT',quantity:1,amount:'',advance:'0',paymentMode:'CASH',deliveryDate:''}),[msg,setMsg]=useState(''),[edit,setEdit]=useState(false),[cf,setCf]=useState({name:customer.name,mobile:customer.mobile,address:customer.address||''}); useEffect(()=>{setCf({name:customer.name,mobile:customer.mobile,address:customer.address||''})},[customer.id]); const fields=MEASURE[m.dressType]||MEASURE.OTHER; const usableMeasurements=(customer.measurements||[]).filter(x=>x.dressType===order.dressType);
+function CustomerProfile({customer,refresh}) {
+  const [m, setM] = useState({dressType:'SHIRT'});
+  const [order, setOrder] = useState({
+    dressType:'SHIRT',
+    quantity:1,
+    amount:'',
+    advance:'0',
+    paymentMode:'CASH',
+    deliveryDate:''
+  });
+  const [msg, setMsg] = useState('');
+  const [edit, setEdit] = useState(false);
+  const [customerOrders, setCustomerOrders] = useState([]);
+  const [cf, setCf] = useState({
+    name: customer.name,
+    mobile: customer.mobile,
+    address: customer.address || ''
+  });
+
+  useEffect(() => {
+    setCf({
+      name: customer.name,
+      mobile: customer.mobile,
+      address: customer.address || ''
+    });
+    loadCustomerOrders(customer.id);
+  }, [customer.id]);
+
+  const fields = MEASURE[m.dressType] || MEASURE.OTHER;
+  const usableMeasurements = (customer.measurements || []).filter(x => x.dressType === order.dressType);
+
+  async function loadCustomerOrders(customerId) {
+    if (!customerId) return;
+    try {
+      const res = await api.get(`/orders/customer/${customerId}`);
+      setCustomerOrders(res.data);
+    } catch (err) {
+      setCustomerOrders([]);
+    }
+  }
+
+  async function saveCustomer(e) {
+    e.preventDefault();
+    try {
+      await api.put(`/customers/${customer.id}`, cf);
+      setMsg('Customer details updated');
+      setEdit(false);
+      refresh();
+    } catch (err) {
+      setMsg(err.message);
+    }
+  }
+
+  async function addMeasurement(e) {
+    e.preventDefault();
+    try {
+      await api.post(`/customers/${customer.id}/measurements`, m);
+      setM({dressType:m.dressType});
+      setMsg(`${DRESS_LABEL[m.dressType]} measurement saved separately`);
+      refresh();
+    } catch (err) {
+      setMsg(err.message);
+    }
+  }
+
+  async function addOrder(e) {
+    e.preventDefault();
+    try {
+      await api.post('/orders', {
+        ...order,
+        customerId: customer.id,
+        measurementId: order.measurementId ? Number(order.measurementId) : null
+      });
+
+      setOrder({
+        dressType: order.dressType,
+        quantity: 1,
+        amount: '',
+        advance: '0',
+        paymentMode: 'CASH',
+        deliveryDate: ''
+      });
+
+      setMsg('Order created and sent to priority queue');
+
+      await loadCustomerOrders(customer.id);
+      refresh();
+    } catch (err) {
+      setMsg(err.message);
+    }
+  }
+
+  return (
+    <div className="profile">
+      <div className="profileHead">
+        <div>
+          <h2>{customer.name}</h2>
+          <p>
+            <Phone size={14}/> {customer.mobile}
+            <span>•</span>
+            <Home size={14}/> {customer.address || 'No address'}
+          </p>
+        </div>
+        <button onClick={() => setEdit(!edit)}>
+          <Edit3 size={15}/>{edit ? 'Close' : 'Edit'}
+        </button>
+      </div>
+
+      {edit && (
+        <form className="form inlineForm" onSubmit={saveCustomer}>
+          <Field label="Name" value={cf.name} onChange={e => setCf({...cf, name:e.target.value})}/>
+          <Field label="Mobile" value={cf.mobile} onChange={e => setCf({...cf, mobile:e.target.value})}/>
+          <Field label="Address" value={cf.address} onChange={e => setCf({...cf, address:e.target.value})}/>
+          <button className="primary"><Save size={15}/>Update</button>
+        </form>
+      )}
+
+      <div className="notice">
+        <b>Important:</b> Shirt and pant measurements are <b>not same</b>. Choose dress type first; the form changes automatically.
+      </div>
+
+      <div className="tabs">
+        <form onSubmit={addMeasurement} className="form mini measurementBox">
+          <h3><Ruler size={18}/> New Measurement</h3>
+
+          <Select icon={<Shirt size={14}/>} label="Dress Type" value={m.dressType} onChange={e => setM({dressType:e.target.value})}>
+            {DRESS.map(x => <option value={x} key={x}>{DRESS_LABEL[x]}</option>)}
+          </Select>
+
+          <div className="measureGrid">
+            {fields.map(([k,l]) => (
+              <Field
+                key={k}
+                label={l}
+                type="number"
+                step="0.1"
+                value={m[k] || ''}
+                onChange={e => setM({...m, [k]:e.target.value})}
+              />
+            ))}
+          </div>
+
+          <Field
+            label="Notes / Fit"
+            placeholder="Example: slim fit, loose, extra pocket"
+            value={m.notes || ''}
+            onChange={e => setM({...m, notes:e.target.value})}
+          />
+
+          <button className="primary full">
+            <Ruler size={16}/>Save {DRESS_LABEL[m.dressType]} Measurement
+          </button>
+        </form>
+
+        <form onSubmit={addOrder} className="form mini orderBox">
+          <h3><ClipboardList size={18}/> New Order</h3>
+
+          <Select label="Dress Type" value={order.dressType} onChange={e => setOrder({...order, dressType:e.target.value, measurementId:''})}>
+            {DRESS.map(x => <option value={x} key={x}>{DRESS_LABEL[x]}</option>)}
+          </Select>
+
+          <Select label="Use Matching Measurement" value={order.measurementId || ''} onChange={e => setOrder({...order, measurementId:e.target.value})}>
+            <option value="">No measurement selected</option>
+            {usableMeasurements.map(mm => (
+              <option value={mm.id} key={mm.id}>
+                {DRESS_LABEL[mm.dressType]} - {fmt(mm.createdAt)}
+              </option>
+            ))}
+          </Select>
+
+          {usableMeasurements.length === 0 && (
+            <div className="smallWarn">
+              No {DRESS_LABEL[order.dressType]} measurement saved for this customer.
+            </div>
+          )}
+
+          <Field label="Quantity" type="number" min="1" value={order.quantity} onChange={e => setOrder({...order, quantity:e.target.value})}/>
+          <Field label="Total Amount" type="number" required value={order.amount} onChange={e => setOrder({...order, amount:e.target.value})}/>
+          <Field label="Advance Paid" type="number" value={order.advance} onChange={e => setOrder({...order, advance:e.target.value})}/>
+
+          <Select label="Payment Mode" value={order.paymentMode} onChange={e => setOrder({...order, paymentMode:e.target.value})}>
+            {PAY.map(x => <option key={x}>{x}</option>)}
+          </Select>
+
+          <Field label="Delivery Date" type="date" required value={order.deliveryDate} onChange={e => setOrder({...order, deliveryDate:e.target.value})}/>
+          <Field label="Order Notes" value={order.specialNotes || ''} onChange={e => setOrder({...order, specialNotes:e.target.value})}/>
+
+          <button className="primary full">
+            <Plus size={16}/>Create Order
+          </button>
+        </form>
+      </div>
+
+      <History title="📏 Measurement History" empty="No measurements yet">
+        {customer.measurements?.map(mm => (
+          <div className="history" key={mm.id}>
+            <b>{DRESS_LABEL[mm.dressType] || mm.dressType}</b>
+            <span>{fmt(mm.createdAt)}</span>
+            <p><MeasurementText m={mm}/></p>
+          </div>
+        ))}
+      </History>
+
+      <History title="🧾 Order History" empty="No orders yet">
+        {customerOrders.map(o => (
+          <OrderLine key={o.id} o={o} reload={() => loadCustomerOrders(customer.id)}/>
+        ))}
+      </History>
+
+      <Toast msg={msg}/>
+    </div>
+  );
+
   async function saveCustomer(e){e.preventDefault(); try{await api.put(`/customers/${customer.id}`,cf); setMsg('Customer details updated'); setEdit(false); refresh();}catch(err){setMsg(err.message)}}
   async function addMeasurement(e){e.preventDefault(); try{await api.post(`/customers/${customer.id}/measurements`,m); setM({dressType:m.dressType}); setMsg(`${DRESS_LABEL[m.dressType]} measurement saved separately`); refresh();}catch(err){setMsg(err.message)}}
   async function addOrder(e){e.preventDefault(); try{await api.post('/orders',{...order,customerId:customer.id,measurementId:order.measurementId?Number(order.measurementId):null}); setOrder({dressType:order.dressType,quantity:1,amount:'',advance:'0',paymentMode:'CASH',deliveryDate:''}); setMsg('Order created and sent to priority queue'); refresh();}catch(err){setMsg(err.message)}}
