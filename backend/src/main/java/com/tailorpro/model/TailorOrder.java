@@ -46,7 +46,7 @@ public class TailorOrder {
     private String specialNotes;
 
     @JsonIgnoreProperties({"orders", "measurements", "hibernateLazyInitializer", "handler"})
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "customer_id")
     private Customer customer;
 
